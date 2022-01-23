@@ -22,6 +22,12 @@
 #endif
 #endif
 
+enum {
+  RLH_ERR       = 0,
+  RLH_WARN      = 1,
+  RLH_NORM      = 2
+} RLH_LOG_LEVEL_E;
+
 // Public API
 RLHDEC void rlh_init();
 
@@ -34,30 +40,30 @@ RLHDEC void rlh_init();
 // -- BEGIN IMPLEMENTATION --
 #ifdef RLH_IMPLEMENTATION
 
-// debug printing
-// TODO: switch to RLH_LOGLEVEL <LOG,DBG,ERR> ?
+static const char *rlh_log_prefix[] = {
+  "\033[0;31m[ERR]",
+  "\033[0;33m[WARN]",
+  "\033[0;0m[LOG]"
+};
+
+#define RLH_LOG(p, f_, ...) printf(("%s " f_), rlh_log_prefix[p], ##__VA_ARGS__)
+
 #ifdef RLH_DEBUG
-#define RLH_PDG(f_, ...) printf(("\033[0;34m[DBG] " f_), ##__VA_ARGS__)
+#define RLH_DBG(f_, ...) printf(("\033[0;34m[DBG] " f_), ##__VA_ARGS__)
 #else
-#define RLH_PDG(...)
-#endif // RLH_DEBUG
-
-// error printing
-#define RLH_PER(f_, ...) printf(("\033[0;31m[ERR] " f_), ##__VA_ARGS__)
-
-// TODO: switch to RLH_LOG(<LEVEL>, ...) ?
-#define RLH_LOG(f_, ...) printf(("\033[0m[LOG] " f_), ##__VA_ARGS__)
+#define RLH_DBG(...)
+#endif
 
 #ifndef RLH_MALLOC
 #define RLH_MALLOC(s)     malloc(s)
 #define RLH_REALLOC(p,nz) realloc(p,ns)
 #define RLH_FREE(p)       free(p)
-#endif // RLH_MALLOC
+#endif
 
 #define RLH_NEW(p, n) ((p) = RLH_MALLOC((n) * sizeof *(p)))
 
 RLHDEF void rlh_init() {
-  RLH_LOG("Initializing rl.h -- version %s\n", RLH_VER);
+  RLH_LOG(RLH_NORM, "Initializing rl.h -- version %s\n", RLH_VER);
 }
 
 #endif // RLH_IMPLEMENTATION
