@@ -12,8 +12,8 @@ BIN    =game
 
 # flags
 CFLAGS =-O3 -lm -ldl -std=gnu99 -lGL -lSDL2 -I. $(IDIRS)
-CFLAGS+=-g -Wall -Wno-unused -Wno-switch -Wno-int-in-bool-context -fdiagnostics-color=always
-# ---
+CFLAGS+=-g -Wall -fdiagnostics-color=always
+# --- -Wno-unused -Wno-switch -Wno-int-in-bool-context
 
 # deps
 SRCDIR =*.c */*.c */*/*.c
