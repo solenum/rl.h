@@ -12,7 +12,6 @@
 #include <stdio.h>
 #endif // RL_NO_STDIO
 
-
 #ifndef RLH_NO_TYPES
 #include <inttypes.h>
 typedef uint64_t u64;
@@ -23,7 +22,19 @@ typedef int64_t  i64;
 typedef int32_t  i32;
 typedef int16_t  i16;
 typedef int8_t   i8;
-#endif
+#endif // RLH_NO_TYPES
+
+#ifndef RLH_NO_BOOL
+#define TRUE  (1)
+#define FALSE (0)
+typedef uint8_t bool;
+#endif // RLH_NO_BOOL
+
+#ifndef RLH_NO_MATH
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define CLAMP(x, l, h) (MAX(l, MIN(x, h)))
+#endif // RLH_NO_MATH
 
 #ifndef RLHDEF
 #ifdef RLH_STATIC
@@ -32,8 +43,8 @@ typedef int8_t   i8;
 #else
 #define RLHDEC extern
 #define RLHDEF
-#endif
-#endif
+#endif // RLH_STATIC
+#endif // RLHDEF
 
 typedef enum {
   RLH_ERR       = 0,
@@ -47,8 +58,16 @@ typedef enum {
   RLH_STATUS_QUIT
 } RLH_STATUS_E;
 
-// Public API
+// public API
 RLHDEC RLH_STATUS_E rlh_init();
+RLHDEC RLH_STATUS_E rlh_render_frame();
+RLHDEC RLH_STATUS_E rlh_exit();
+RLHDEC bool rlh_keydown(SDL_Scancode k);
+RLHDEC bool rlh_keyup(SDL_Scancode k);
+RLHDEC bool rlh_mousedown(i32 b);
+RLHDEC bool rlh_mouseup(i32 b);
+RLHDEC void rlh_mouseposition(i32 *x, i32 *y);
+RLHDEC void rlh_setkeyrepeat(bool enable);
 
 #endif // RLH
 // -- END INCLUDE --
@@ -57,6 +76,7 @@ RLHDEC RLH_STATUS_E rlh_init();
 
 // --------------------
 // -- BEGIN IMPLEMENTATION --
+#define RLH_IMPLEMENTATION
 #ifdef RLH_IMPLEMENTATION
 
 static const char *rlh_log_prefix[] = {
@@ -83,14 +103,35 @@ static const char *rlh_log_prefix[] = {
 
 // only api implemented at the moment
 #define RLH_API_SDL2
-
 #ifdef RLH_API_SDL2
 
+#define RLH_NUM_BUTTONS 16
+
+// private api
+RLHDEC RLH_STATUS_E rlh_input(SDL_Event *event);
+RLHDEF void rlh_update_input();
+
+// locals
 static SDL_Window   *rlh_sdl_window  = NULL;
 static SDL_GLContext rlh_sdl_context = NULL;
+static u8            rlh_keys_down[SDL_NUM_SCANCODES] = { FALSE };
+static u8            rlh_buttons_down[RLH_NUM_BUTTONS];
+static i32           rlh_mouse_position[2];
+static bool          rlh_key_repeat = TRUE;
+
+void (*rlh_ptr_keypressed)(SDL_Scancode, bool) = NULL;
+void (*rlh_ptr_keyreleased)(SDL_Scancode)      = NULL;
+void (*rlh_ptr_mousepressed)(i32)              = NULL;
+void (*rlh_ptr_mousereleased)(i32)             = NULL;
+void (*rlh_ptr_mousewheel)(i32, i32)           = NULL;
+void (*rlh_ptr_mousemotion)(i32,i32)           = NULL;
+
+RLHDEF void rlh_void() {};
 
 RLHDEF RLH_STATUS_E rlh_init() {
   RLH_LOG(RLH_NORM, "Initializing rl.h -- version %s\n", RLH_VER);
+
+  // TODO: func-pointers to handle user-callbacks for input etc
 
   // initialize SDL2
   if (!SDL_Init(SDL_INIT_EVERYTHING)) {
@@ -148,10 +189,22 @@ RLHDEF RLH_STATUS_E rlh_init() {
   return RLH_STATUS_SUCCESS;
 }
 
+RLHDEF void rlh_update_input()
+{
+  if (SDL_GetRelativeMouseMode()) {
+    SDL_GetRelativeMouseState(&rlh_mouse_position[0], &rlh_mouse_position[1]);
+  } else {
+    SDL_GetMouseState(&rlh_mouse_position[0], &rlh_mouse_position[1]);
+  }
+}
+
 RLHDEF RLH_STATUS_E rlh_render_frame()
 {
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
+
+  // TODO: move this to game loop
+  rlh_update_input();
 
   // TODO: handle events elsewhere (maybe not)?
   // handle SDL events
@@ -174,10 +227,9 @@ RLHDEF RLH_STATUS_E rlh_render_frame()
       case SDL_TEXTINPUT:
       case SDL_MOUSEMOTION:
       case SDL_KEYMAPCHANGED: {
-        // TODO: handle input
         // TODO: translate input codes to agnostic rlh_input codes
         //       (SDL_SCANCODE_LEFT -> RLH_KEY_LEFT etc)
-        // input_event(&event);
+        rlh_input(&event);
         break;
       }
     }
@@ -201,6 +253,79 @@ RLHDEF RLH_STATUS_E rlh_render_frame()
   SDL_GL_SwapWindow(rlh_sdl_window);
 
   return RLH_STATUS_SUCCESS;
+}
+
+RLHDEF RLH_STATUS_E rlh_input(SDL_Event *event)
+{
+  switch (event->type) {
+    // keyboard input
+    case SDL_KEYDOWN: {
+      rlh_keys_down[event->key.keysym.scancode] = TRUE;
+      if (!event->key.repeat || (event->key.repeat && rlh_key_repeat)) {
+        rlh_ptr_keypressed ? rlh_ptr_keypressed(event->key.keysym.scancode, event->key.repeat) : rlh_void();
+      }
+      break;
+    }
+    case SDL_KEYUP: {
+      rlh_keys_down[event->key.keysym.scancode] = FALSE;
+      rlh_ptr_keyreleased ? rlh_ptr_keyreleased(event->key.keysym.scancode) : rlh_void();
+      break;
+    }
+
+    // mouse input
+    case SDL_MOUSEBUTTONDOWN: {
+      rlh_buttons_down[event->button.button] = TRUE;
+      rlh_ptr_mousepressed ? rlh_ptr_mousepressed(event->button.button) : rlh_void();
+      break;
+    }
+    case SDL_MOUSEBUTTONUP: {
+      rlh_buttons_down[event->button.button] = FALSE;
+      rlh_ptr_mousereleased ? rlh_ptr_mousereleased(event->button.button) : rlh_void();
+      break;
+    }
+    case SDL_MOUSEWHEEL: {
+      rlh_ptr_mousewheel ? rlh_ptr_mousewheel(event->wheel.x, event->wheel.y) : rlh_void();
+      break;
+    }
+    case SDL_MOUSEMOTION: {
+      // TODO: change this to motion.x/y based on user-toggle?
+      rlh_ptr_mousemotion ? rlh_ptr_mousemotion(event->motion.xrel, event->motion.yrel) : rlh_void();
+      break;
+    }
+  }
+
+  return RLH_STATUS_SUCCESS;
+}
+
+RLHDEF bool rlh_keydown(SDL_Scancode k)
+{
+  return rlh_keys_down[CLAMP(k, 0, SDL_NUM_SCANCODES)] == TRUE;
+}
+
+RLHDEF bool rlh_keyup(SDL_Scancode k)
+{
+  return rlh_keys_down[CLAMP(k, 0, SDL_NUM_SCANCODES)] == FALSE;
+}
+
+RLHDEF bool rlh_mousedown(i32 b)
+{
+  return rlh_buttons_down[CLAMP(b, 0, RLH_NUM_BUTTONS)] == TRUE;
+}
+
+RLHDEF bool rlh_mouseup(i32 b)
+{
+  return rlh_buttons_down[CLAMP(b, 0, RLH_NUM_BUTTONS)] == FALSE;
+}
+
+RLHDEF void rlh_mouseposition(i32 *x, i32 *y)
+{
+  *x = rlh_mouse_position[0];
+  *y = rlh_mouse_position[1];
+}
+
+RLHDEF void rlh_setkeyrepeat(bool enable)
+{
+  rlh_key_repeat = enable;
 }
 
 RLHDEF RLH_STATUS_E rlh_exit()
