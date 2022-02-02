@@ -101,9 +101,67 @@ static const char *rlh_log_prefix[] = {
 
 #define RLH_NEW(p, n) ((p) = RLH_MALLOC((n) * sizeof *(p)))
 
-// only api implemented at the moment
+// --------------------
+// -- BEGIN IMPLEMENTATION SDL2 --
 #define RLH_API_SDL2
 #ifdef RLH_API_SDL2
+
+// --------------------
+// -- BEGIN IMPLEMENTATION OPENGL --
+#ifndef RLH_NO_GL
+
+#define RLH_RENDERER_FLAGS SDL_WINDOW_OPENGL
+
+// locals
+static SDL_GLContext rlh_sdl_context    = NULL;
+static SDL_Window   *rlh_sdl_window_ptr = NULL;
+
+RLHDEF RLH_STATUS_E rlh_init_renderer(SDL_Window *window) {
+  rlh_sdl_window_ptr = window;
+
+  // set gl attributes
+  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+  SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+  SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 0);
+
+  // get the gl context
+  rlh_sdl_context = SDL_GL_CreateContext(rlh_sdl_window_ptr);
+  if (rlh_sdl_context != NULL) {
+    RLH_LOG(RLH_NORM, "Got OpenGL context\n");
+  } else {
+    RLH_LOG(RLH_ERR, "Failed creating OpenGL context\n");
+    return RLH_STATUS_ERROR;
+  }
+
+  // get the gl proc address
+  if (gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
+    RLH_LOG(RLH_NORM, "Got OpenGL proc address\n");
+  } else {
+    RLH_LOG(RLH_ERR, "Failed getting OpenGL proc address\n");
+    return RLH_STATUS_ERROR;
+  }
+
+  SDL_GL_SetSwapInterval(1);
+
+  return RLH_STATUS_SUCCESS;
+}
+
+RLHDEF void rlh_renderer_begin() {
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+}
+
+RLHDEF void rlh_renderer_end() {
+  SDL_GL_SwapWindow(rlh_sdl_window_ptr);
+}
+
+#endif // RLH_API_SDL2_GL
+// -- END OPENGL IMPLEMENTATION --
+// --------------------
 
 #define RLH_NUM_BUTTONS 16
 
@@ -113,7 +171,6 @@ RLHDEF void rlh_update_input();
 
 // locals
 static SDL_Window   *rlh_sdl_window  = NULL;
-static SDL_GLContext rlh_sdl_context = NULL;
 static u8            rlh_keys_down[SDL_NUM_SCANCODES] = { FALSE };
 static u8            rlh_buttons_down[RLH_NUM_BUTTONS];
 static i32           rlh_mouse_position[2];
@@ -141,15 +198,6 @@ RLHDEF RLH_STATUS_E rlh_init() {
     return RLH_STATUS_ERROR;
   }
 
-  // set gl attributes
-  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-  SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-  SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 0);
-
   // TODO: let user define title, width, height (with defaults)? 
   u32 width  = 1024;
   u32 height = 1024;
@@ -158,7 +206,7 @@ RLHDEF RLH_STATUS_E rlh_init() {
                             SDL_WINDOWPOS_CENTERED,
                             width,
                             height,
-                            SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+                            SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | RLH_RENDERER_FLAGS);
 
   if (rlh_sdl_window != NULL) {
     RLH_LOG(RLH_NORM, "Window created %ux%u\n", width, height);
@@ -167,24 +215,11 @@ RLHDEF RLH_STATUS_E rlh_init() {
     return RLH_STATUS_ERROR;
   }
 
-  // get the gl context
-  rlh_sdl_context = SDL_GL_CreateContext(rlh_sdl_window);
-  if (rlh_sdl_context != NULL) {
-    RLH_LOG(RLH_NORM, "Got OpenGL context\n");
-  } else {
-    RLH_LOG(RLH_ERR, "Failed creating OpenGL context\n");
+  // init the rendering backend
+  if (rlh_init_renderer(rlh_sdl_window) == RLH_STATUS_ERROR) {
+    RLH_LOG(RLH_ERR, "Failed to initialize renderer\n");
     return RLH_STATUS_ERROR;
   }
-
-  // get the gl proc address
-  if (gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
-    RLH_LOG(RLH_NORM, "Got OpenGL proc address\n");
-  } else {
-    RLH_LOG(RLH_ERR, "Failed getting OpenGL proc address\n");
-    return RLH_STATUS_ERROR;
-  }
-
-  SDL_GL_SetSwapInterval(1);
 
   return RLH_STATUS_SUCCESS;
 }
@@ -200,11 +235,10 @@ RLHDEF void rlh_update_input()
 
 RLHDEF RLH_STATUS_E rlh_render_frame()
 {
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT);
-
   // TODO: move this to game loop
   rlh_update_input();
+
+  rlh_renderer_begin();
 
   // TODO: handle events elsewhere (maybe not)?
   // handle SDL events
@@ -250,7 +284,7 @@ RLHDEF RLH_STATUS_E rlh_render_frame()
     }
   }
 
-  SDL_GL_SwapWindow(rlh_sdl_window);
+  rlh_renderer_end();
 
   return RLH_STATUS_SUCCESS;
 }
@@ -338,5 +372,9 @@ RLHDEF RLH_STATUS_E rlh_exit()
   return RLH_STATUS_SUCCESS;
 }
 #endif // RLH_API_SDL2
+// -- END SDL2 IMPLEMENTATION --
+// --------------------
 
 #endif // RLH_IMPLEMENTATION
+// -- END IMPLEMENTATION --
+// --------------------
