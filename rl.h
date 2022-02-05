@@ -46,13 +46,13 @@ typedef uint8_t bool;
 #endif // RLH_STATIC
 #endif // RLHDEF
 
-typedef enum {
+typedef enum RLH_LOG_LEVEL_E {
   RLH_ERR       = 0,
   RLH_WARN      = 1,
   RLH_NORM      = 2
 } RLH_LOG_LEVEL_E;
 
-typedef enum {
+typedef enum RLH_STATUS_E {
   RLH_STATUS_SUCCESS,
   RLH_STATUS_ERROR,
   RLH_STATUS_QUIT
@@ -120,12 +120,12 @@ RLHDEF RLH_STATUS_E rlh_init_renderer(SDL_Window *window) {
   rlh_sdl_window_ptr = window;
 
   // set gl attributes
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
   SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
   SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 0);
 
   // get the gl context
@@ -138,7 +138,7 @@ RLHDEF RLH_STATUS_E rlh_init_renderer(SDL_Window *window) {
   }
 
   // get the gl proc address
-  if (gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
+  if (gladLoadGLES2Loader((GLADloadproc)SDL_GL_GetProcAddress)) {
     RLH_LOG(RLH_NORM, "Got OpenGL proc address\n");
   } else {
     RLH_LOG(RLH_ERR, "Failed getting OpenGL proc address\n");
@@ -187,8 +187,6 @@ RLHDEF void rlh_void() {};
 
 RLHDEF RLH_STATUS_E rlh_init() {
   RLH_LOG(RLH_NORM, "Initializing rl.h -- version %s\n", RLH_VER);
-
-  // TODO: func-pointers to handle user-callbacks for input etc
 
   // initialize SDL2
   if (!SDL_Init(SDL_INIT_EVERYTHING)) {
