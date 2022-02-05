@@ -3,6 +3,9 @@
 */
 
 
+
+// --------------------
+// -- BEGIN INCLUDE --
 #ifndef RLH
 #define RLH
 
@@ -74,6 +77,8 @@ RLHDEC void rlh_setkeyrepeat(bool enable);
 // --------------------
 
 
+
+
 // --------------------
 // -- BEGIN IMPLEMENTATION --
 #define RLH_IMPLEMENTATION
@@ -100,21 +105,61 @@ static const char *rlh_log_prefix[] = {
 #endif
 
 #define RLH_NEW(p, n) ((p) = RLH_MALLOC((n) * sizeof *(p)))
-
+// -- END IMPLEMENTATION HEADER --
 // --------------------
-// -- BEGIN IMPLEMENTATION SDL2 --
-#define RLH_API_SDL2
-#ifdef RLH_API_SDL2
+
+
 
 // --------------------
 // -- BEGIN IMPLEMENTATION OPENGL --
+#ifndef RLH_NO_SDL2
 #ifndef RLH_NO_GL
 
 #define RLH_RENDERER_FLAGS SDL_WINDOW_OPENGL
 
+// shaders
+const char *rlh_gl_vertex_shader = "\
+#version 100 \n\
+precision mediump float; \n\
+void main() \n\
+{ \n\
+} \n\
+";
+
+const char *rlh_gl_fragment_shader = "\
+#version 100 \n\
+precision mediump float; \n\
+void main() \n\
+{ \n\
+  gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); \n\
+} \n\
+";
+
 // locals
 static SDL_GLContext rlh_sdl_context    = NULL;
 static SDL_Window   *rlh_sdl_window_ptr = NULL;
+static GLuint        rlh_shader_program = 0;
+
+RLHDEF RLH_STATUS_E rlh_load_shader(GLuint *ret, const char *str, GLenum shdr_type)
+{
+  // create and compile shader
+  GLuint shader = glCreateShader(shdr_type);
+  glShaderSource(shader, 1, (const GLchar* const*)&str, NULL);
+  glCompileShader(shader);
+
+  // check errors
+  GLchar compile_log[512]; GLint success = 0;
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+  if (!success) {
+    glGetShaderInfoLog(shader, 512, NULL, compile_log);
+    RLH_LOG(RLH_ERR, "Failed to compile shader\n%s\n", compile_log);
+    return RLH_STATUS_ERROR;
+  }
+
+  *ret = shader;
+
+  return RLH_STATUS_SUCCESS;
+}
 
 RLHDEF RLH_STATUS_E rlh_init_renderer(SDL_Window *window) {
   rlh_sdl_window_ptr = window;
@@ -131,21 +176,39 @@ RLHDEF RLH_STATUS_E rlh_init_renderer(SDL_Window *window) {
   // get the gl context
   rlh_sdl_context = SDL_GL_CreateContext(rlh_sdl_window_ptr);
   if (rlh_sdl_context != NULL) {
-    RLH_LOG(RLH_NORM, "Got OpenGL context\n");
+    RLH_LOG(RLH_NORM, "Got OpenGL ES 2.0 context\n");
+    SDL_GL_MakeCurrent(rlh_sdl_window_ptr, rlh_sdl_context);
   } else {
-    RLH_LOG(RLH_ERR, "Failed creating OpenGL context\n");
+    RLH_LOG(RLH_ERR, "Failed creating OpenGL ES 2.0 context\n");
     return RLH_STATUS_ERROR;
   }
 
+
   // get the gl proc address
   if (gladLoadGLES2Loader((GLADloadproc)SDL_GL_GetProcAddress)) {
-    RLH_LOG(RLH_NORM, "Got OpenGL proc address\n");
+    RLH_LOG(RLH_NORM, "Got OpenGL ES 2.0 proc address\n");
   } else {
-    RLH_LOG(RLH_ERR, "Failed getting OpenGL proc address\n");
+    RLH_LOG(RLH_ERR, "Failed getting OpenGL ES 2.0 proc address\n");
     return RLH_STATUS_ERROR;
   }
 
   SDL_GL_SetSwapInterval(1);
+
+  // load the shaders
+  GLuint fshader, vshader;
+  if (rlh_load_shader(&vshader, rlh_gl_vertex_shader, GL_FRAGMENT_SHADER) == RLH_STATUS_ERROR ||
+      rlh_load_shader(&fshader, rlh_gl_fragment_shader, GL_FRAGMENT_SHADER) == RLH_STATUS_ERROR) {
+    return RLH_STATUS_ERROR;
+  } else {
+    RLH_LOG(RLH_NORM, "Compiled shaders\n");
+  }
+
+  // create the shader program
+  rlh_shader_program = glCreateProgram();
+  glAttachShader(rlh_shader_program, vshader);
+  glAttachShader(rlh_shader_program, fshader);
+  glLinkProgram(rlh_shader_program);
+  glUseProgram(rlh_shader_program);
 
   return RLH_STATUS_SUCCESS;
 }
@@ -159,10 +222,14 @@ RLHDEF void rlh_renderer_end() {
   SDL_GL_SwapWindow(rlh_sdl_window_ptr);
 }
 
-#endif // RLH_API_SDL2_GL
+#endif // RLH_NO_GL
 // -- END OPENGL IMPLEMENTATION --
 // --------------------
 
+
+
+// --------------------
+// -- BEGIN IMPLEMENTATION SDL2 --
 #define RLH_NUM_BUTTONS 16
 
 // private api
@@ -369,7 +436,7 @@ RLHDEF RLH_STATUS_E rlh_exit()
 
   return RLH_STATUS_SUCCESS;
 }
-#endif // RLH_API_SDL2
+#endif // RLH_NO_SDL2
 // -- END SDL2 IMPLEMENTATION --
 // --------------------
 
