@@ -51,6 +51,9 @@ endif
 # rules
 $(ODIR)/%.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
+
+$(ODIR)/%.o: lib/%.c $(DEPS)
+	$(CC) -c -o $@ $< $(CFLAGS)
 # ---
 
 # main

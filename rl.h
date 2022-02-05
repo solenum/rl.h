@@ -115,9 +115,11 @@ static const char *rlh_log_prefix[] = {
 #ifndef RLH_NO_SDL2
 #ifndef RLH_NO_GL
 
+// defs
 #define RLH_RENDERER_FLAGS SDL_WINDOW_OPENGL
+#define RLH_MAX_TEXTURES   32
 
-// shaders
+// shader sources
 const char *rlh_gl_vertex_shader = "\
 #version 100 \n\
 precision mediump float; \n\
@@ -135,13 +137,63 @@ void main() \n\
 } \n\
 ";
 
-// locals
-static SDL_GLContext rlh_sdl_context    = NULL;
-static SDL_Window   *rlh_sdl_window_ptr = NULL;
-static GLuint        rlh_shader_program = 0;
+// types
+typedef struct {
+  GLuint id;
+  int width, height, components;
+  u8 *data, active;
+  char name[16];
+} rlh_texture_t;
 
-RLHDEF RLH_STATUS_E rlh_load_shader(GLuint *ret, const char *str, GLenum shdr_type)
-{
+// locals
+static SDL_GLContext  rlh_sdl_context    = NULL;
+static SDL_Window    *rlh_sdl_window_ptr = NULL;
+static GLuint         rlh_shader_program = 0;
+static rlh_texture_t  rlh_textures[RLH_MAX_TEXTURES] = { 0 };
+
+RLHDEF RLH_STATUS_E rlh_add_texture(const char *str, int w, int h, int c, u8 *d) {
+  // find empty texture slot
+  rlh_texture_t *t = NULL;
+  for (int i=0; i<RLH_MAX_TEXTURES; i++) {
+    if (!rlh_textures[i].active) {
+      t = &rlh_textures[i];
+      break;
+    }
+  }
+
+  // no slots left
+  if (!t) {
+    RLH_LOG(RLH_ERR, "Texture limit (%i) exceeded!\n", RLH_MAX_TEXTURES);
+    return RLH_STATUS_ERROR;
+  }
+
+  t->width      = w;
+  t->height     = h;
+  t->components = c;
+  t->active     = 1;
+  strncpy(t->name, str, 16);
+
+  // generate gl texture
+  glGenTextures(1, &t->id);
+  glBindTexture(GL_TEXTURE_2D, t->id);
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  if (c == 4) {
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, d);
+  } else if (c == 3) {
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, d);
+  }
+
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  RLH_LOG(RLH_NORM, "Added new texture: %s\n", t->name);
+}
+
+RLHDEF RLH_STATUS_E rlh_load_shader(GLuint *ret, const char *str, GLenum shdr_type) {
   // create and compile shader
   GLuint shader = glCreateShader(shdr_type);
   glShaderSource(shader, 1, (const GLchar* const*)&str, NULL);
@@ -289,8 +341,7 @@ RLHDEF RLH_STATUS_E rlh_init() {
   return RLH_STATUS_SUCCESS;
 }
 
-RLHDEF void rlh_update_input()
-{
+RLHDEF void rlh_update_input() {
   if (SDL_GetRelativeMouseMode()) {
     SDL_GetRelativeMouseState(&rlh_mouse_position[0], &rlh_mouse_position[1]);
   } else {
@@ -298,8 +349,7 @@ RLHDEF void rlh_update_input()
   }
 }
 
-RLHDEF RLH_STATUS_E rlh_render_frame()
-{
+RLHDEF RLH_STATUS_E rlh_render_frame() {
   // TODO: move this to game loop
   rlh_update_input();
 
@@ -354,8 +404,7 @@ RLHDEF RLH_STATUS_E rlh_render_frame()
   return RLH_STATUS_SUCCESS;
 }
 
-RLHDEF RLH_STATUS_E rlh_input(SDL_Event *event)
-{
+RLHDEF RLH_STATUS_E rlh_input(SDL_Event *event) {
   switch (event->type) {
     // keyboard input
     case SDL_KEYDOWN: {
@@ -396,39 +445,32 @@ RLHDEF RLH_STATUS_E rlh_input(SDL_Event *event)
   return RLH_STATUS_SUCCESS;
 }
 
-RLHDEF bool rlh_keydown(SDL_Scancode k)
-{
+RLHDEF bool rlh_keydown(SDL_Scancode k) {
   return rlh_keys_down[CLAMP(k, 0, SDL_NUM_SCANCODES)] == TRUE;
 }
 
-RLHDEF bool rlh_keyup(SDL_Scancode k)
-{
+RLHDEF bool rlh_keyup(SDL_Scancode k) {
   return rlh_keys_down[CLAMP(k, 0, SDL_NUM_SCANCODES)] == FALSE;
 }
 
-RLHDEF bool rlh_mousedown(i32 b)
-{
+RLHDEF bool rlh_mousedown(i32 b) {
   return rlh_buttons_down[CLAMP(b, 0, RLH_NUM_BUTTONS)] == TRUE;
 }
 
-RLHDEF bool rlh_mouseup(i32 b)
-{
+RLHDEF bool rlh_mouseup(i32 b) {
   return rlh_buttons_down[CLAMP(b, 0, RLH_NUM_BUTTONS)] == FALSE;
 }
 
-RLHDEF void rlh_mouseposition(i32 *x, i32 *y)
-{
+RLHDEF void rlh_mouseposition(i32 *x, i32 *y) {
   *x = rlh_mouse_position[0];
   *y = rlh_mouse_position[1];
 }
 
-RLHDEF void rlh_setkeyrepeat(bool enable)
-{
+RLHDEF void rlh_setkeyrepeat(bool enable) {
   rlh_key_repeat = enable;
 }
 
-RLHDEF RLH_STATUS_E rlh_exit()
-{
+RLHDEF RLH_STATUS_E rlh_exit() {
   RLH_LOG(RLH_NORM, "Cleaning up renderer\n");
   SDL_GL_DeleteContext(rlh_sdl_context);
   SDL_DestroyWindow(rlh_sdl_window);
