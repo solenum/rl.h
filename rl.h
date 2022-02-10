@@ -2,8 +2,6 @@
   ...tbc
 */
 
-
-
 // --------------------
 // -- BEGIN INCLUDE --
 #ifndef RLH
@@ -79,8 +77,15 @@ RLHDEC void rlh_setkeyrepeat(bool enable);
 
 
 
+
+
 // --------------------
 // -- BEGIN IMPLEMENTATION --
+
+
+
+// --------------------
+// -- BEGIN IMPLEMENTATION 'HEADER' --
 #define RLH_IMPLEMENTATION
 #ifdef RLH_IMPLEMENTATION
 
@@ -105,7 +110,35 @@ static const char *rlh_log_prefix[] = {
 #endif
 
 #define RLH_NEW(p, n) ((p) = RLH_MALLOC((n) * sizeof *(p)))
-// -- END IMPLEMENTATION HEADER --
+// -- END IMPLEMENTATION 'HEADER' --
+// --------------------
+
+
+
+// --------------------
+// -- BEGIN IMPLEMENTATION RL.H --
+typedef int rlh_level;
+
+typedef struct {
+  int depth, width, height;
+  int *tiles;
+} rlh_level_t;
+
+rlh_level_t **rlh_levels = NULL;
+size_t       rlh_level_count = 0;
+
+RLHDEF rlh_level rlh_level_new() {
+  if (!rlh_levels) {
+    // TODO: variable length? some stb library?
+    rlh_levels = malloc(sizeof(rlh_level_t*) * 128);
+  }
+
+  RLH_LOG(RLH_NORM, "Generating new empty level\n");
+  rlh_levels[rlh_level_count] = malloc(sizeof(rlh_level_t));
+  return rlh_level_count++;
+}
+
+// -- END IMPLEMENTATION RL.h --
 // --------------------
 
 
@@ -138,6 +171,12 @@ void main() \n\
 ";
 
 // types
+typedef struct {
+  float position[3];
+  float color[4];
+  float uv[2];
+} rlh_vertex_t;
+
 typedef struct {
   GLuint id;
   int width, height, components;
@@ -191,6 +230,7 @@ RLHDEF RLH_STATUS_E rlh_add_texture(const char *str, int w, int h, int c, u8 *d)
   glBindTexture(GL_TEXTURE_2D, 0);
 
   RLH_LOG(RLH_NORM, "Added new texture: %s\n", t->name);
+  return RLH_STATUS_SUCCESS;
 }
 
 RLHDEF RLH_STATUS_E rlh_load_shader(GLuint *ret, const char *str, GLenum shdr_type) {
@@ -261,6 +301,47 @@ RLHDEF RLH_STATUS_E rlh_init_renderer(SDL_Window *window) {
   glAttachShader(rlh_shader_program, fshader);
   glLinkProgram(rlh_shader_program);
   glUseProgram(rlh_shader_program);
+
+  GLuint rlh_vertices_vbo;
+  GLuint rlh_indices_vbo;
+  
+  // TODO: tilemap rendering
+  // ideas: have a unit-tilemap, a square vertex field where each 'tile' has the size of 1
+  //        each time a tilemap is rendered, the vertex field is scaled up to match the correct tile size
+  //        and the uv coords are updated accordingly
+
+  glGenBuffers(1, &rlh_vertices_vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, rlh_vertices_vbo);
+  // glBufferData .. vertices
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  glGenBuffers(1, &rlh_indices_vbo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rlh_indices_vbo);
+  // glBufferData .. indices
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+  // render
+  // glUseProgram(program);
+  // glBindBuffer(GL_ARRAY_BUFFER, rlh_tilemap_vbo);
+  // GLint pos = glGetAttribLocation(sp, "position"); (do this once at init?)
+  // glEnableVertexAttribArray(pos)
+  // glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
+  // repeat above 3 steps for color etc
+  // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+  // glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, 0);
+
+  // typedef struct {
+  //   GLuint vao, vbo, shader;
+  //   u32 tile_count;
+  //   float    *vertices;
+  //   u32 vertex_count;
+  //   u32 width,  height;
+  //   u32 rwidth, rheight;
+  //   mat4x4   transform;
+  //   texture_t *texture;
+  //   float *tile_uv;
+  //   int initialized;
+  // } render_tilemap_t;
 
   return RLH_STATUS_SUCCESS;
 }
@@ -481,6 +562,8 @@ RLHDEF RLH_STATUS_E rlh_exit() {
 #endif // RLH_NO_SDL2
 // -- END SDL2 IMPLEMENTATION --
 // --------------------
+
+
 
 #endif // RLH_IMPLEMENTATION
 // -- END IMPLEMENTATION --
